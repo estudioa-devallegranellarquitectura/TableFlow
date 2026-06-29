@@ -212,7 +212,9 @@ tr:hover .row-actions{opacity:1}
 /* ══ MOBILE ══════════════════════════════════════════════════ */
 @media (max-width: 768px){
   /* Home */
-  #home-topbar{padding:0 16px;height:52px}
+  #home-topbar{padding:0 12px;height:auto;min-height:52px;flex-wrap:wrap;gap:8px;padding-top:10px;padding-bottom:10px}
+  #home-topbar .home-logo{order:1}
+  #home-topbar > div:last-child{order:2;flex-wrap:wrap;gap:6px}
   #home-body{padding:24px 16px 24px}
   #home-hero{margin-bottom:28px}
   #home-hero h1{font-size:22px}
@@ -300,8 +302,13 @@ tr:hover .row-actions{opacity:1}
       <div class="home-logo-icon">🪑</div>
       TableFlow
     </div>
-    <button class="btn btn-primary" onclick="openNewEventModal()">+ Nuevo evento</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn" onclick="importData()" title="Importar eventos desde otro dispositivo">↓ Importar</button>
+      <button class="btn" onclick="exportData()" title="Exportar todos los eventos para llevarlos a otro dispositivo">↑ Exportar</button>
+      <button class="btn btn-primary" onclick="openNewEventModal()">+ Nuevo evento</button>
+    </div>
   </div>
+  <input type="file" id="import-file-input" accept=".json" style="display:none" onchange="handleImportFile(this)">
   <div id="home-body">
     <div id="home-hero">
       <h1>Tus eventos</h1>
@@ -660,6 +667,64 @@ function deserializeEvent(data){
 // ══════════════════════════════════════════════════════════════════
 let currentEventId=null,currentEventName='',currentEventDate='',currentGuestsEstimate=0,currentAccent=ACCENT_COLORS[0];
 let selectedAccentIdx=0,isDirty=false;
+
+// ══════════════════════════════════════════════════════════════════
+//  EXPORT / IMPORT DATA
+// ══════════════════════════════════════════════════════════════════
+function exportData(){
+  const events=loadAllEvents();
+  if(!events.length){showToast('No hay eventos guardados para exportar');return;}
+  const data={
+    app:'TableFlow',
+    version:1,
+    exportedAt:new Date().toISOString(),
+    events
+  };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const date=new Date().toISOString().slice(0,10);
+  a.href=url;a.download='tableflow_backup_'+date+'.json';
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);URL.revokeObjectURL(url);
+  showToast('✓ '+events.length+' evento'+(events.length!==1?'s':'')+' exportado'+(events.length!==1?'s':'')+' correctamente');
+}
+
+function importData(){
+  document.getElementById('import-file-input').click();
+}
+
+function handleImportFile(input){
+  const file=input.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      // Accept both raw array and wrapped format
+      const incoming=Array.isArray(data)?data:(data.events||[]);
+      if(!incoming.length){showToast('El archivo no contiene eventos');return;}
+      const existing=loadAllEvents();
+      let added=0,updated=0;
+      incoming.forEach(ev=>{
+        const idx=existing.findIndex(x=>x.id===ev.id);
+        if(idx>=0){
+          // Ask only once if there are conflicts
+          existing[idx]=ev;updated++;
+        } else {
+          existing.unshift(ev);added++;
+        }
+      });
+      saveAllEvents(existing);
+      renderHome();
+      showToast('✓ '+added+' nuevo'+(added!==1?'s':'')+', '+updated+' actualizado'+(updated!==1?'s':''));
+    }catch(err){
+      showToast('Error al leer el archivo: formato no válido');
+    }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
 
 function renderHome(){
   const events=loadAllEvents();
